@@ -78,7 +78,7 @@ router.get('/', async (req, res) => {
                     await SUPUNMDInc.sendMessage(userJid, { text: stringSession });
 
                     // Send confirmation message
-                    await SUPUNMDInc.sendMessage(userJid, { text: "*🪄 𝐐𝐔𝐄𝐄𝐍 𝐑𝐀𝐒𝐇𝐔 𝐌𝐃 𝐕2 New Update.....💐*\n\n* SESION SUCCESSFUL ✅\n\n*උඩ ආපු Sesion Id එක ශෙයා කරන්න එපා හොදද 😩🪄💐*\n\n+ ┉┉┉┉┉┉┉┉[ ❤️‍🩹 ]┉┉┉┉┉┉┉┉ +\n*❗𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐆𝐑𝐎𝐔𝐏*\n* https://chat.whatsapp.com/GGwN8bjWtCDKrm7kuNCcnd\n\n*❗𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐂𝐇𝐀𝐍𝐍𝐄𝐋*\n* https://whatsapp.com/channel/0029VaicB1MISTkGyQ7Bqe23\n\n*❗𝐑𝐀𝐒𝐇𝐔 𝐂𝐎𝐍𝐓𝐀𝐂𝐓*\n* wa.me/94727319036\n\n\n> 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝐐𝐔𝐄𝐄𝐍 𝐑𝐀𝐒𝐇𝐔 𝐌𝐃 𝙾𝙵𝙲 🫟" });
+                    await SUPUNMDInc.sendMessage(userJid, { text: "*🪄 𝐆𝐎𝐉𝐎 𝐌𝐃 𝐕1 New Update.....💐*\n\n* SESION SUCCESSFUL ✅\n\n*උඩ ආපු Sesion Id එක ශෙයා කරන්න එපා හොදද 😩🪄💐*\n\n+ ┉┉┉┉┉┉┉┉[ ❤️‍🩹🤩📽️ ]┉┉┉┉┉┉┉┉ +\n*❗𝐘𝐓 𝐂𝐇𝐀𝐍𝐄𝐋*\n* https://youtube.com/@sl-anime-world-i3d?si=3O1PV8FWwEhQ8DjQ\n\n*❗𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐂𝐇𝐀𝐍𝐍𝐄𝐋*\n* https://whatsapp.com/channel/0029Vb6FzEEJuyA5oH65Ee0T\n\n*❗𝐆𝐎𝐉𝐎 𝐌𝐃 𝐎𝐖𝐍𝐄𝐑 𝐂𝐎𝐍𝐓𝐀𝐂𝐓*\n* wa.me/94743826406\n\n\n> 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝐆𝐎𝐉𝐎 𝐌𝐃 𝙾𝙵𝙲 🫟" });
                     
                     // Clean up session after use
                     await delay(100);
