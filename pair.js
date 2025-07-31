@@ -1,135 +1,114 @@
 import express from 'express';
-import fs from 'fs';
-import axios from 'axios';
-import pino from 'pino';
-import {
-  makeWASocket,
+import { Boom } from '@hapi/boom';
+import makeWASocket, {
+  makeInMemoryStore,
   useMultiFileAuthState,
-  delay,
-  makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion,
+  DisconnectReason
 } from '@whiskeysockets/baileys';
-import { upload } from './mega.js'; // MEGA upload function
+import P from 'pino';
+import fs from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import FormData from 'form-data';
+import axios from 'axios';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-const router = express.Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// 🧹 Delete temp session folder
-function removeFile(filePath) {
-  if (fs.existsSync(filePath)) {
-    fs.rmSync(filePath, { recursive: true, force: true });
+const app = express();
+const PORT = process.env.PORT || 3000;
+const store = makeInMemoryStore({ logger: P().child({ level: 'silent', stream: 'store' }) });
+
+async function downloadAndUploadSession(sessionPath) {
+  const form = new FormData();
+  form.append('file', fs.createReadStream(sessionPath), 'creds.json');
+
+  const response = await axios.post('https://tmp.ninja/api/upload', form, {
+    headers: form.getHeaders(),
+  });
+
+  return response.data.files[0].url;
+}
+
+async function triggerHerokuDeploy(sessionUrl) {
+  const appName = 'gojomain';
+  const herokuApiKey = 'HRKU-AAuwrPbXoQwDgKzD6jUtwJWHycxTWfStWlIYz5V6KQQw_____wIliv9RHBTr';
+  const githubRepo = 'gojosathory2/Gojo-md-new';
+
+  const configVars = {
+    SESSION_ID: sessionUrl
+  };
+
+  try {
+    await axios.patch(`https://api.heroku.com/apps/${appName}/config-vars`, configVars, {
+      headers: {
+        Authorization: `Bearer ${herokuApiKey}`,
+        Accept: 'application/vnd.heroku+json; version=3',
+        'Content-Type': 'application/json',
+      }
+    });
+
+    await axios.post(`https://api.heroku.com/apps/${appName}/builds`, {
+      source_blob: {
+        url: `https://github.com/${githubRepo}/tarball/main/`
+      }
+    }, {
+      headers: {
+        Authorization: `Bearer ${herokuApiKey}`,
+        Accept: 'application/vnd.heroku+json; version=3',
+        'Content-Type': 'application/json',
+      }
+    });
+
+    console.log('🔁 Heroku deploy trigger successful!');
+  } catch (error) {
+    console.error('❌ Heroku Deploy Error:', error?.response?.data || error.message);
   }
 }
 
-router.get('/', async (req, res) => {
-  let num = req.query.number;
-  if (!num) return res.status(400).send({ error: 'Missing number parameter' });
+app.get('/', async (req, res) => {
+  const number = req.query.number;
+  if (!number) return res.send('Number is missing');
 
-  let dirs = './' + num.replace(/[^0-9]/g, '');
+  const { state, saveCreds } = await useMultiFileAuthState(join(tmpdir(), `session-${Date.now()}`));
+  const { version } = await fetchLatestBaileysVersion();
+  const sock = makeWASocket({
+    version,
+    logger: P({ level: 'silent' }),
+    printQRInTerminal: true,
+    auth: state,
+    browser: ['GOJO', 'safari', '1.0']
+  });
 
-  removeFile(dirs); // Clear old session folder
+  store.bind(sock.ev);
 
-  async function initiateSession() {
-    const { state, saveCreds } = await useMultiFileAuthState(dirs);
-
-    try {
-      const sock = makeWASocket({
-        auth: {
-          creds: state.creds,
-          keys: makeCacheableSignalKeyStore(
-            state.keys,
-            pino({ level: 'silent' }).child({})
-          ),
-        },
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === 'close') {
+      const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+      console.log('connection closed due to', lastDisconnect?.error, ', reconnecting', shouldReconnect);
+      if (shouldReconnect) connectToWhatsApp();
+    } else if (connection === 'open') {
+      await sock.sendMessage(`${number}@s.whatsapp.net`, {
+        text: '*🟢 Your WhatsApp is successfully paired with GOJO MD.*\n\nWait a few seconds while we deploy your bot...'
       });
 
-      // Show pairing code
-      if (!sock.authState.creds.registered) {
-        await delay(2000);
-        const code = await sock.requestPairingCode(num);
-        if (!res.headersSent) return res.send({ code });
-      }
+      await saveCreds();
+      const sessionPath = join(state.credsPath, 'creds.json');
+      const stringSession = await downloadAndUploadSession(sessionPath);
 
-      sock.ev.on('creds.update', saveCreds);
-
-      sock.ev.on('connection.update', async ({ connection }) => {
-        if (connection === 'open') {
-          console.log(`✅ Connected for: ${num}`);
-          await delay(3000);
-
-          const sessionPath = `${dirs}/creds.json`;
-          const sessionStream = fs.createReadStream(sessionPath);
-
-          // Generate random name
-          const fileName = `gojo-${Math.random().toString(36).substring(2, 10)}.json`;
-
-          const megaUrl = await upload(sessionStream, fileName);
-          console.log(`📦 Session uploaded: ${megaUrl}`);
-
-          // === HEROKU CONFIG ===
-          const HEROKU_APP_NAME = 'gojomain';
-          const HEROKU_API_KEY = 'HRKU-AAuwrPbXoQwDgKzD6jUtwJWHycxTWfStWlIYz5V6KQQw_____wIliv9RHBTr';
-          const GITHUB_TARBALL = 'https://github.com/gojosathory2/Gojo-md-new/';
-
-          try {
-            // 1. Set SESSION_ID env
-            await axios.patch(
-              `https://api.heroku.com/apps/${HEROKU_APP_NAME}/config-vars`,
-              { SESSION_ID: megaUrl },
-              {
-                headers: {
-                  Authorization: `Bearer ${HEROKU_API_KEY}`,
-                  Accept: 'application/vnd.heroku+json; version=3',
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
-            console.log('🛠️ Heroku config updated');
-
-            // 2. Trigger deploy
-            await axios.post(
-              `https://api.heroku.com/apps/${HEROKU_APP_NAME}/builds`,
-              {
-                source_blob: {
-                  url: GITHUB_TARBALL,
-                },
-              },
-              {
-                headers: {
-                  Authorization: `Bearer ${HEROKU_API_KEY}`,
-                  Accept: 'application/vnd.heroku+json; version=3',
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
-            console.log('🚀 Deployment triggered');
-
-            if (!res.headersSent)
-              res.send({ status: '✅ Deployed', session: megaUrl });
-          } catch (err) {
-            console.error('Heroku error:', err.response?.data || err.message);
-            if (!res.headersSent)
-              res.status(500).send({ error: '❌ Heroku deploy failed' });
-          }
-
-          await delay(2000);
-          removeFile(dirs);
-          process.exit(0);
-        }
+      await sock.sendMessage(`${number}@s.whatsapp.net`, {
+        text: `✅ Your Session is Ready!\n\n🔗 ${stringSession}`
       });
-    } catch (e) {
-      console.error('Error:', e);
-      if (!res.headersSent)
-        res.status(500).send({ error: '❌ Pairing failed' });
+
+      await triggerHerokuDeploy(stringSession);
+
+      process.exit(0);
     }
-  }
-
-  await initiateSession();
+  });
 });
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-
-export default router;
+app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
