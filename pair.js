@@ -2,27 +2,30 @@ import express from 'express';
 import fs from 'fs';
 import axios from 'axios';
 import pino from 'pino';
-import { makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
-import { upload } from './mega.js'; // ඔබගේ mega upload module එක
+import {
+  makeWASocket,
+  useMultiFileAuthState,
+  delay,
+  makeCacheableSignalKeyStore,
+} from '@whiskeysockets/baileys';
+import { upload } from './mega.js'; // MEGA upload function
 
 const router = express.Router();
 
-function removeFile(FilePath) {
-  try {
-    if (!fs.existsSync(FilePath)) return false;
-    fs.rmSync(FilePath, { recursive: true, force: true });
-  } catch (e) {
-    console.error('Error removing file:', e);
+// 🧹 Delete temp session folder
+function removeFile(filePath) {
+  if (fs.existsSync(filePath)) {
+    fs.rmSync(filePath, { recursive: true, force: true });
   }
 }
 
 router.get('/', async (req, res) => {
   let num = req.query.number;
-  if (!num) return res.status(400).send({ error: "Missing number parameter" });
+  if (!num) return res.status(400).send({ error: 'Missing number parameter' });
 
-  let dirs = './' + num;
+  let dirs = './' + num.replace(/[^0-9]/g, '');
 
-  await removeFile(dirs);
+  removeFile(dirs); // Clear old session folder
 
   async function initiateSession() {
     const { state, saveCreds } = await useMultiFileAuthState(dirs);
@@ -31,108 +34,102 @@ router.get('/', async (req, res) => {
       const sock = makeWASocket({
         auth: {
           creds: state.creds,
-          keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+          keys: makeCacheableSignalKeyStore(
+            state.keys,
+            pino({ level: 'silent' }).child({})
+          ),
         },
         printQRInTerminal: false,
-        logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        logger: pino({ level: 'silent' }),
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
       });
 
+      // Show pairing code
       if (!sock.authState.creds.registered) {
         await delay(2000);
-        num = num.replace(/[^0-9]/g, '');
         const code = await sock.requestPairingCode(num);
-        if (!res.headersSent) {
-          return res.send({ code });
-        }
+        if (!res.headersSent) return res.send({ code });
       }
 
       sock.ev.on('creds.update', saveCreds);
 
-      sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
+      sock.ev.on('connection.update', async ({ connection }) => {
+        if (connection === 'open') {
+          console.log(`✅ Connected for: ${num}`);
+          await delay(3000);
 
-        if (connection === "open") {
-          console.log(`Session connected for number: ${num}`);
-          await delay(5000);
+          const sessionPath = `${dirs}/creds.json`;
+          const sessionStream = fs.createReadStream(sessionPath);
 
-          function generateRandomId(length = 6, numberLength = 4) {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-            let res = '';
-            for (let i = 0; i < length; i++) {
-              res += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            const num = Math.floor(Math.random() * Math.pow(10, numberLength));
-            return `${res}${num}`;
-          }
+          // Generate random name
+          const fileName = `gojo-${Math.random().toString(36).substring(2, 10)}.json`;
 
-          const sessionFilePath = `${dirs}/creds.json`;
-          const megaUrl = await upload(fs.createReadStream(sessionFilePath), `${generateRandomId()}.json`);
-          console.log('Session uploaded to MEGA:', megaUrl);
+          const megaUrl = await upload(sessionStream, fileName);
+          console.log(`📦 Session uploaded: ${megaUrl}`);
 
-          // Heroku config
+          // === HEROKU CONFIG ===
           const HEROKU_APP_NAME = 'gojoweb';
           const HEROKU_API_KEY = 'HRKU-AAuwrPbXoQwDgKzD6jUtwJWHycxTWfStWlIYz5V6KQQw_____wIliv9RHBTr';
           const GITHUB_TARBALL = 'https://api.github.com/repos/gojosathory2/Gojo-md-new/tarball/main/';
 
           try {
-            // Update SESSION_ID env var
-            await axios.patch(`https://api.heroku.com/apps/${HEROKU_APP_NAME}/config-vars`,
+            // 1. Set SESSION_ID env
+            await axios.patch(
+              `https://api.heroku.com/apps/${HEROKU_APP_NAME}/config-vars`,
               { SESSION_ID: megaUrl },
               {
                 headers: {
                   Authorization: `Bearer ${HEROKU_API_KEY}`,
                   Accept: 'application/vnd.heroku+json; version=3',
                   'Content-Type': 'application/json',
-                }
-              });
+                },
+              }
+            );
+            console.log('🛠️ Heroku config updated');
 
-            console.log('✅ SESSION_ID set in Heroku config vars');
-
-            // Trigger build/deploy
-            await axios.post(`https://api.heroku.com/apps/${HEROKU_APP_NAME}/builds`,
+            // 2. Trigger deploy
+            await axios.post(
+              `https://api.heroku.com/apps/${HEROKU_APP_NAME}/builds`,
               {
-                source_blob: { url: GITHUB_TARBALL }
+                source_blob: {
+                  url: GITHUB_TARBALL,
+                },
               },
               {
                 headers: {
                   Authorization: `Bearer ${HEROKU_API_KEY}`,
                   Accept: 'application/vnd.heroku+json; version=3',
                   'Content-Type': 'application/json',
-                }
-              });
+                },
+              }
+            );
+            console.log('🚀 Deployment triggered');
 
-            console.log('🚀 Heroku deployment triggered successfully');
-
-            if (!res.headersSent) res.send({ status: 'Heroku deploy triggered', session: megaUrl });
-
+            if (!res.headersSent)
+              res.send({ status: '✅ Deployed', session: megaUrl });
           } catch (err) {
-            console.error('Heroku deploy error:', err.response?.data || err.message);
-            if (!res.headersSent) res.status(500).send({ error: 'Heroku deploy failed' });
+            console.error('Heroku error:', err.response?.data || err.message);
+            if (!res.headersSent)
+              res.status(500).send({ error: '❌ Heroku deploy failed' });
           }
 
-          await delay(100);
+          await delay(2000);
           removeFile(dirs);
           process.exit(0);
-
-        } else if (connection === 'close' && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
-          console.log('Connection closed unexpectedly:', lastDisconnect.error);
-          await delay(10000);
-          initiateSession();
         }
       });
-
-    } catch (err) {
-      console.error('Session init error:', err);
-      if (!res.headersSent) res.status(503).send({ error: 'Service Unavailable' });
+    } catch (e) {
+      console.error('Error:', e);
+      if (!res.headersSent)
+        res.status(500).send({ error: '❌ Pairing failed' });
     }
   }
 
   await initiateSession();
 });
 
-process.on('uncaughtException', err => {
+process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-export default router;  
+export default router;
