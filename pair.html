@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>𝐐𝐔𝐄𝐄𝐍-𝐑𝐀𝐒𝐇𝐔-𝐌𝐃 PAIR CODE</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Arial', sans-serif;
+      background: linear-gradient(to right, #4e0000, #8b0000);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: white;
+    }
+
+    .container {
+      background: rgba(255, 0, 0, 0.15);
+      padding: 2rem;
+      border-radius: 20px;
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+      width: 90%;
+      max-width: 400px;
+      text-align: center;
+      backdrop-filter: blur(5px);
+    }
+
+    .container h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+
+    .container p {
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .input-group {
+      display: flex;
+      margin-bottom: 20px;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid #ffcccc;
+    }
+
+    .input-group input {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      color: #111;
+    }
+
+    .input-group button {
+      background: #ff0044;
+      color: white;
+      border: none;
+      padding: 0 20px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    .input-group button:hover {
+      background: #00ff88;
+      color: #000;
+    }
+
+    #pair, #waiting-message {
+      margin-top: 1rem;
+      font-weight: bold;
+    }
+
+    @media (max-width: 480px) {
+      .input-group {
+        flex-direction: column;
+      }
+
+      .input-group button {
+        width: 100%;
+        border-radius: 0 0 12px 12px;
+      }
+
+      .input-group input {
+        border-radius: 12px 12px 0 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2><i class="fas fa-link"></i> 𝐐𝐔𝐄𝐄𝐍-𝐑𝐀𝐒𝐇𝐔-𝐌𝐃</h2>
+    <p>⚙ Enter your WhatsApp number with country code</p>
+    <div class="input-group">
+      <input type="number" id="number" placeholder="+947XXXXXXXX">
+      <button id="submit">Enter</button>
+    </div>
+    <div id="waiting-message" style="display:none;">Please wait...</div>
+    <div id="pair"></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.0.0-alpha.1/axios.min.js"></script>
+  <script>
+    const numberInput = document.getElementById("number");
+    const submitBtn = document.getElementById("submit");
+    const pairDiv = document.getElementById("pair");
+    const waitingMessage = document.getElementById("waiting-message");
+
+    async function Copy() {
+      const codeText = document.getElementById("copy").innerText.replace('CODE: ', '');
+      await navigator.clipboard.writeText(codeText);
+      const el = document.getElementById("copy");
+      el.innerText = "COPIED";
+      el.style.color = "blue";
+      setTimeout(() => {
+        el.innerText = "CODE: " + codeText;
+        el.style.color = "red";
+      }, 1000);
+    }
+
+    submitBtn.addEventListener("click", async () => {
+      const number = numberInput.value.replace(/[^0-9]/g, "");
+      if (!number || number.length < 11) {
+        pairDiv.innerHTML = `<p style="color: yellow">🚫 Invalid number</p>`;
+        return;
+      }
+
+      waitingMessage.style.display = "block";
+      const response = await axios(`/code?number=${number}`);
+      waitingMessage.style.display = "none";
+
+      const code = response.data.code || "Service Unavailable";
+      pairDiv.innerHTML = `<p id="copy" onclick="Copy()" style="cursor:pointer; color: red">CODE: <span style="color:white">${code}</span></p>`;
+    });
+  </script>
+</body>
+</html>
