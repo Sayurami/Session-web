@@ -12,8 +12,8 @@ import * as mega from 'megajs';
 
 // Mega authentication credentials
 const auth = {
-    email: 'sulakshamadara4@gmail.com', // Replace with your Mega email
-    password: 'Sulakshamd011222@ms', // Replace with your Mega password
+    email: 'eranmax9@gmail.com', // Replace with your Mega email
+    password: 'Sayura2008***7', // Replace with your Mega password
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246'
 };
 
