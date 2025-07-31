@@ -1,109 +1,138 @@
-
-
 import express from 'express';
 import fs from 'fs';
+import axios from 'axios';
 import pino from 'pino';
-import { makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore, Browsers, jidNormalizedUser } from '@whiskeysockets/baileys';
-import { upload } from './mega.js';
+import { makeWASocket, useMultiFileAuthState, delay, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
+import { upload } from './mega.js'; // ඔබගේ mega upload module එක
 
 const router = express.Router();
 
-// Ensure the session directory exists
 function removeFile(FilePath) {
-    try {
-        if (!fs.existsSync(FilePath)) return false;
-        fs.rmSync(FilePath, { recursive: true, force: true });
-    } catch (e) {
-        console.error('Error removing file:', e);
-    }
+  try {
+    if (!fs.existsSync(FilePath)) return false;
+    fs.rmSync(FilePath, { recursive: true, force: true });
+  } catch (e) {
+    console.error('Error removing file:', e);
+  }
 }
 
 router.get('/', async (req, res) => {
-    let num = req.query.number;
-    let dirs = './' + (num || `session`);
-    
-    // Remove existing session if present
-    await removeFile(dirs);
-    
-    async function initiateSession() {
-        const { state, saveCreds } = await useMultiFileAuthState(dirs);
+  let num = req.query.number;
+  if (!num) return res.status(400).send({ error: "Missing number parameter" });
 
-        try {
-            let SUPUNMDInc = makeWASocket({
-                auth: {
-                    creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
-                },
-                printQRInTerminal: false,
-                logger: pino({ level: "fatal" }).child({ level: "fatal" }),
-                browser: ["Ubuntu", "Chrome", "20.0.04"],
-            });
+  let dirs = './' + num;
 
-            if (!SUPUNMDInc.authState.creds.registered) {
-                await delay(2000);
-                num = num.replace(/[^0-9]/g, '');
-                const code = await SUPUNMDInc.requestPairingCode(num);
-                if (!res.headersSent) {
-                    console.log({ num, code });
-                    await res.send({ code });
-                }
-            }
+  await removeFile(dirs);
 
-            SUPUNMDInc.ev.on('creds.update', saveCreds);
-            SUPUNMDInc.ev.on("connection.update", async (s) => {
-                const { connection, lastDisconnect } = s;
+  async function initiateSession() {
+    const { state, saveCreds } = await useMultiFileAuthState(dirs);
 
-                if (connection === "open") {
-                    await delay(10000);
-                    const sessionGlobal = fs.readFileSync(dirs + '/creds.json');
+    try {
+      const sock = makeWASocket({
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
+        },
+        printQRInTerminal: false,
+        logger: pino({ level: "fatal" }).child({ level: "fatal" }),
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
+      });
 
-                    // Helper to generate a random Mega file ID
-                    function generateRandomId(length = 6, numberLength = 4) {
-                        const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-                        let result = '';
-                        for (let i = 0; i < length; i++) {
-                            result += characters.charAt(Math.floor(Math.random() * characters.length));
-                        }
-                        const number = Math.floor(Math.random() * Math.pow(10, numberLength));
-                        return `${result}${number}`;
-                    }
-
-                    // Upload session file to Mega
-                    const megaUrl = await upload(fs.createReadStream(`${dirs}/creds.json`), `${generateRandomId()}.json`);
-                    let stringSession = megaUrl.replace('https://mega.nz/file/', ''); // Extract session ID from URL
-                    stringSession = '' + stringSession;  // Prepend your name to the session ID
-
-                    // Send the session ID to the target number
-                    const userJid = jidNormalizedUser(num + '@s.whatsapp.net');
-                    await SUPUNMDInc.sendMessage(userJid, { text: stringSession });
-
-                    // Send confirmation message
-                    await SUPUNMDInc.sendMessage(userJid, { text: "*🪄 𝐆𝐎𝐉𝐎 𝐌𝐃 𝐕1 New Update.....💐*\n\n* SESION SUCCESSFUL ✅\n\n*උඩ ආපු Sesion Id එක ශෙයා කරන්න එපා හොදද 😩🪄💐*\n\n+ ┉┉┉┉┉┉┉┉[ ❤️‍🩹🤩📽️ ]┉┉┉┉┉┉┉┉ +\n*❗𝐘𝐓 𝐂𝐇𝐀𝐍𝐄𝐋*\n* https://youtube.com/@sl-anime-world-i3d?si=3O1PV8FWwEhQ8DjQ\n\n*❗𝐖𝐇𝐀𝐓𝐒𝐀𝐏𝐏 𝐂𝐇𝐀𝐍𝐍𝐄𝐋*\n* https://whatsapp.com/channel/0029Vb6FzEEJuyA5oH65Ee0T\n\n*❗𝐆𝐎𝐉𝐎 𝐌𝐃 𝐎𝐖𝐍𝐄𝐑 𝐂𝐎𝐍𝐓𝐀𝐂𝐓*\n* wa.me/94743826406\n\n\n> 𝙿𝙾𝚆𝙴𝚁𝙳 𝙱𝚈 𝐆𝐎𝐉𝐎 𝐌𝐃 𝙾𝙵𝙲 🫟" });
-                    
-                    // Clean up session after use
-                    await delay(100);
-                    removeFile(dirs);
-                    process.exit(0);
-                } else if (connection === 'close' && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
-                    console.log('Connection closed unexpectedly:', lastDisconnect.error);
-                    await delay(10000);
-                    initiateSession(); // Retry session initiation if needed
-                }
-            });
-        } catch (err) {
-            console.error('Error initializing session:', err);
-            if (!res.headersSent) {
-                res.status(503).send({ code: 'Service Unavailable' });
-            }
+      if (!sock.authState.creds.registered) {
+        await delay(2000);
+        num = num.replace(/[^0-9]/g, '');
+        const code = await sock.requestPairingCode(num);
+        if (!res.headersSent) {
+          return res.send({ code });
         }
+      }
+
+      sock.ev.on('creds.update', saveCreds);
+
+      sock.ev.on("connection.update", async (update) => {
+        const { connection, lastDisconnect } = update;
+
+        if (connection === "open") {
+          console.log(`Session connected for number: ${num}`);
+          await delay(5000);
+
+          function generateRandomId(length = 6, numberLength = 4) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let res = '';
+            for (let i = 0; i < length; i++) {
+              res += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            const num = Math.floor(Math.random() * Math.pow(10, numberLength));
+            return `${res}${num}`;
+          }
+
+          const sessionFilePath = `${dirs}/creds.json`;
+          const megaUrl = await upload(fs.createReadStream(sessionFilePath), `${generateRandomId()}.json`);
+          console.log('Session uploaded to MEGA:', megaUrl);
+
+          // Heroku config
+          const HEROKU_APP_NAME = 'gojoweb';
+          const HEROKU_API_KEY = 'HRKU-AAuwrPbXoQwDgKzD6jUtwJWHycxTWfStWlIYz5V6KQQw_____wIliv9RHBTr';
+          const GITHUB_TARBALL = 'https://api.github.com/repos/gojosathory2/Gojo-md-new/tarball/main/';
+
+          try {
+            // Update SESSION_ID env var
+            await axios.patch(`https://api.heroku.com/apps/${HEROKU_APP_NAME}/config-vars`,
+              { SESSION_ID: megaUrl },
+              {
+                headers: {
+                  Authorization: `Bearer ${HEROKU_API_KEY}`,
+                  Accept: 'application/vnd.heroku+json; version=3',
+                  'Content-Type': 'application/json',
+                }
+              });
+
+            console.log('✅ SESSION_ID set in Heroku config vars');
+
+            // Trigger build/deploy
+            await axios.post(`https://api.heroku.com/apps/${HEROKU_APP_NAME}/builds`,
+              {
+                source_blob: { url: GITHUB_TARBALL }
+              },
+              {
+                headers: {
+                  Authorization: `Bearer ${HEROKU_API_KEY}`,
+                  Accept: 'application/vnd.heroku+json; version=3',
+                  'Content-Type': 'application/json',
+                }
+              });
+
+            console.log('🚀 Heroku deployment triggered successfully');
+
+            if (!res.headersSent) res.send({ status: 'Heroku deploy triggered', session: megaUrl });
+
+          } catch (err) {
+            console.error('Heroku deploy error:', err.response?.data || err.message);
+            if (!res.headersSent) res.status(500).send({ error: 'Heroku deploy failed' });
+          }
+
+          await delay(100);
+          removeFile(dirs);
+          process.exit(0);
+
+        } else if (connection === 'close' && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
+          console.log('Connection closed unexpectedly:', lastDisconnect.error);
+          await delay(10000);
+          initiateSession();
+        }
+      });
+
+    } catch (err) {
+      console.error('Session init error:', err);
+      if (!res.headersSent) res.status(503).send({ error: 'Service Unavailable' });
     }
+  }
 
-    await initiateSession();
+  await initiateSession();
 });
 
-// Global uncaught exception handler
-process.on('uncaughtException', (err) => {
-    console.log('Caught exception: ' + err);
+process.on('uncaughtException', err => {
+  console.error('Uncaught Exception:', err);
 });
 
-export default router;
+export default router;  
