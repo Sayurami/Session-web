@@ -68,9 +68,9 @@ router.get('/', async (req, res) => {
           console.log(`📦 Session uploaded: ${megaUrl}`);
 
           // === HEROKU CONFIG ===
-          const HEROKU_APP_NAME = 'gojoweb';
+          const HEROKU_APP_NAME = 'gojomain';
           const HEROKU_API_KEY = 'HRKU-AAuwrPbXoQwDgKzD6jUtwJWHycxTWfStWlIYz5V6KQQw_____wIliv9RHBTr';
-          const GITHUB_TARBALL = 'https://api.github.com/repos/gojosathory2/Gojo-md-new/tarball/main/';
+          const GITHUB_TARBALL = 'https://github.com/gojosathory2/Gojo-md-new/';
 
           try {
             // 1. Set SESSION_ID env
